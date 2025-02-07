@@ -1,4 +1,4 @@
-import { IsBoolean, IsString, IsUrl } from 'class-validator';
+import { IsBoolean, IsString, IsUrl, IsArray } from 'class-validator';
 
 export class CreateReviewDto {
   @IsString()
@@ -16,8 +16,16 @@ export class CreateReviewDto {
   @IsBoolean()
   recommended: boolean;
 
-  @IsUrl()
-  imageUrl: string; // ✅ S3 이미지 URL 필드
+  @IsArray()
+  @IsUrl({}, { each: true })
+  imageUrls: string[]; // ✅ 여러 개의 이미지 URL 배열
+
+  @IsArray()
+  @IsUrl({}, { each: true })
+  thumbnailUrls?: string[]; // ✅ 여러 개의 썸네일 URL 배열 (선택적 필드)
+
+  @IsString()
+  googleId: string;
 }
 
 export class UpdateReviewDto extends CreateReviewDto {}

@@ -12,16 +12,22 @@ export class Review {
   description: string;
 
   @Prop({ required: true })
-  ageGroup: string; // 사용 연령
+  ageGroup: string;
 
   @Prop({ required: true })
-  purchaseLink: string; // 구매처 링크
+  purchaseLink: string;
 
   @Prop({ required: true })
-  recommended: boolean; // 추천 여부
+  recommended: boolean;
 
   @Prop({ required: true })
-  imageUrl: string; // ✅ S3에 업로드된 이미지 링크
+  imageUrls: string[];
+
+  @Prop({ required: true })
+  thumbnailUrls: string[];
+
+  @Prop({ required: true })
+  googleId: string;
 }
 
 export const ReviewSchema = SchemaFactory.createForClass(Review);

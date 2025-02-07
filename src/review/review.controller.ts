@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ReviewService } from './review.service';
 import { CreateReviewDto, UpdateReviewDto } from './dto/review.dto';
@@ -18,8 +19,9 @@ export class ReviewController {
 
   @Post()
   @UseGuards(JwtAuthGuard) // ✅ JWT 인증 추가
-  async createReview(@Body() createReviewDto: CreateReviewDto) {
-    return this.reviewService.createReview(createReviewDto);
+  async createReview(@Body() createReviewDto: CreateReviewDto, @Req() req) {
+    const googleId = req.user.googleId;
+    return this.reviewService.createReview(createReviewDto, googleId);
   }
 
   @Get()
@@ -37,13 +39,17 @@ export class ReviewController {
   async updateReview(
     @Param('id') id: string,
     @Body() updateReviewDto: UpdateReviewDto,
+    @Req() req,
   ) {
-    return this.reviewService.updateReview(id, updateReviewDto);
+    const googleId = req.user.googleId;
+    console.log('구글아디', googleId);
+    return this.reviewService.updateReview(id, updateReviewDto, googleId);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard) // ✅ JWT 인증 추가
-  async deleteReview(@Param('id') id: string) {
-    return this.reviewService.deleteReview(id);
+  async deleteReview(@Param('id') id: string, @Req() req) {
+    const googleId = req.user.googleId;
+    return this.reviewService.deleteReview(id, googleId);
   }
 }

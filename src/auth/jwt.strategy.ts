@@ -23,8 +23,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: any) {
-    console.log(`🔑 JWT Payload:`, payload);
-
     const userKey = `user:${payload.sub}`;
     const user = await this.redisClient.get(userKey);
 
