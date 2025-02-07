@@ -29,6 +29,13 @@ export class ReviewController {
     return this.reviewService.getAllReviews();
   }
 
+  @Get('/my-reviews')
+  @UseGuards(JwtAuthGuard) // JWT 인증 필수
+  async getMyReviews(@Req() req) {
+    const googleId = req.user.googleId; // JWT에서 Google ID 추출
+    return this.reviewService.getReviewsByUser(googleId);
+  }
+
   @Get(':id')
   async getReviewById(@Param('id') id: string) {
     return this.reviewService.getReviewById(id);

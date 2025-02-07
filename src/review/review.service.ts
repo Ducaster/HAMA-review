@@ -127,4 +127,13 @@ export class ReviewService {
     await this.reviewModel.findByIdAndDelete(id).exec();
     return { message: 'Review deleted successfully' };
   }
+
+  // ✅ 특정 사용자가 작성한 후기 조회
+  async getReviewsByUser(googleId: string): Promise<Review[]> {
+    const reviews = await this.reviewModel.find({ googleId }).exec();
+    if (!reviews.length) {
+      throw new NotFoundException(`No reviews found for user ${googleId}`);
+    }
+    return reviews;
+  }
 }
