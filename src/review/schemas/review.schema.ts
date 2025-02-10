@@ -3,7 +3,7 @@ import { Document } from 'mongoose';
 
 export type ReviewDocument = Review & Document;
 
-@Schema()
+@Schema({ timestamps: true })
 export class Review {
   @Prop({ required: true })
   name: string;
@@ -28,6 +28,15 @@ export class Review {
 
   @Prop({ required: true })
   googleId: string;
+
+  @Prop()
+  userId: string;
+
+  @Prop()
+  content: string;
+
+  @Prop()
+  rating: number;
 }
 
 export const ReviewSchema = SchemaFactory.createForClass(Review);

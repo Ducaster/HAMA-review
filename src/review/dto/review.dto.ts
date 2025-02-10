@@ -29,3 +29,8 @@ export class CreateReviewDto {
 }
 
 export class UpdateReviewDto extends CreateReviewDto {}
+
+export class ReviewDto {
+  readonly createdAt?: Date;
+  readonly updatedAt?: Date;
+}
