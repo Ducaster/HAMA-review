@@ -59,4 +59,12 @@ export class ReviewController {
     const googleId = req.user.googleId;
     return this.reviewService.deleteReview(id, googleId);
   }
+
+  // ✅ 특정 사용자의 모든 후기 삭제
+  @Delete('reviews')
+  @UseGuards(JwtAuthGuard) // JWT 인증 필요
+  async deleteReviewsByUser(@Req() req) {
+    const googleId = req.user.googleId;
+    return this.reviewService.deleteReviewsByUser(googleId);
+  }
 }
