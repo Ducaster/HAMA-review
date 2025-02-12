@@ -61,7 +61,7 @@ export class ReviewController {
   }
 
   // ✅ 특정 사용자의 모든 후기 삭제
-  @Delete('reviews')
+  @Delete('')
   @UseGuards(JwtAuthGuard) // JWT 인증 필요
   async deleteReviewsByUser(@Req() req) {
     const googleId = req.user.googleId;
