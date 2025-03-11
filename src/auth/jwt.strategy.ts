@@ -1,35 +1,22 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config'; // ✅ ConfigService 추가
-import Redis from 'ioredis';
+import { PassportStrategy } from '@nestjs/passport';
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
-  private redisClient: Redis;
-
-  constructor(private readonly configService: ConfigService) {
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(private configService: ConfigService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), // ✅ 요청에서 JWT 추출
-      ignoreExpiration: false, // ✅ 만료된 토큰 거부
-      secretOrKey: configService.get<string>('JWT_SECRET'), // ✅ 환경변수에서 시크릿 키 가져오기
-    });
-
-    this.redisClient = new Redis({
-      host: configService.get<string>('REDIS_HOST', '127.0.0.1'),
-      port: configService.get<number>('REDIS_PORT', 6379),
-      password: configService.get<string>('REDIS_PASSWORD', ''),
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: configService.get<string>('JWT_SECRET'),
     });
   }
 
   async validate(payload: any) {
-    const userKey = `user:${payload.sub}`;
-    const user = await this.redisClient.get(userKey);
-
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
-    return JSON.parse(user);
+    // JWT 토큰에서 필요한 정보를 추출하여 반환
+    return {
+      userId: payload.sub,
+    };
   }
 }

@@ -1,150 +1,153 @@
 import {
-  BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import mongoose, { Model, Types } from 'mongoose';
-import { Review, ReviewDocument } from './schemas/review.schema';
-import { CreateReviewDto, UpdateReviewDto } from './dto/review.dto';
+import {
+  DynamoDBClient,
+  PutItemCommand,
+  GetItemCommand,
+  ScanCommand,
+  UpdateItemCommand,
+  DeleteItemCommand,
+  QueryCommand,
+} from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class ReviewService {
-  constructor(
-    @InjectModel(Review.name) private reviewModel: Model<ReviewDocument>,
-  ) {}
+  private readonly dynamoDBClient = new DynamoDBClient({
+    region: process.env.AWS_REGION,
+  });
 
-  // ✅ ID 유효성 검사 함수
-  private validateObjectId(id: string): Types.ObjectId {
-    if (!mongoose.isValidObjectId(id)) {
-      throw new BadRequestException(`Invalid ID format: ${id}`);
-    }
-    return new Types.ObjectId(id);
-  }
-
-  // ✅ 썸네일 URL 생성 함수
-  private generateThumbnailUrl(imageUrl: string): string {
-    return imageUrl.replace(
-      'https://hama-post-image.s3.ap-northeast-2.amazonaws.com/uploads/',
-      'https://hama-post-thumbnail.s3.ap-northeast-2.amazonaws.com/thumbnails/',
-    ); // ✅ 경로 변경
-  }
+  private readonly tableName = 'Reviews';
 
   // ✅ 상품 등록
-  async createReview(
-    createReviewDto: CreateReviewDto,
-    googleId: string,
-  ): Promise<Review> {
-    const { imageUrls } = createReviewDto;
+  async createReview(createReviewDto: any, googleId: string) {
+    const id = uuidv4();
+    const item = {
+      id,
+      googleId,
+      ...createReviewDto,
+    };
 
-    // ✅ imageUrls을 변형하여 thumbnailUrls 생성
-    const thumbnailUrls = imageUrls.map((url) =>
-      this.generateThumbnailUrl(url),
+    await this.dynamoDBClient.send(
+      new PutItemCommand({
+        TableName: this.tableName,
+        Item: marshall(item),
+      }),
     );
 
-    const newReview = new this.reviewModel({
-      ...createReviewDto,
-      googleId, // ✅ 작성자 구글 ID 추가
-      thumbnailUrls, // ✅ 썸네일 URL 추가
-    });
-
-    return newReview.save();
+    return item;
   }
 
   // ✅ 전체 상품 조회
-  async getAllReviews(): Promise<Review[]> {
-    return this.reviewModel.find().exec();
+  async getAllReviews() {
+    const { Items } = await this.dynamoDBClient.send(
+      new ScanCommand({ TableName: this.tableName }),
+    );
+    return Items ? Items.map((item) => unmarshall(item)) : [];
   }
 
   // ✅ 특정 상품 조회
-  async getReviewById(id: string): Promise<Review> {
-    const objectId = this.validateObjectId(id); // ✅ ID 변환 및 검증
-    const review = await this.reviewModel.findById(objectId).exec();
-    if (!review) {
+  async getReviewById(id: string) {
+    const { Item } = await this.dynamoDBClient.send(
+      new GetItemCommand({
+        TableName: this.tableName,
+        Key: marshall({ id }),
+      }),
+    );
+    if (!Item) {
       throw new NotFoundException(`Review with ID ${id} not found`);
     }
-    return review;
+    return unmarshall(Item);
   }
 
-  // ✅ 상품 수정
-  async updateReview(
-    id: string,
-    updateReviewDto: UpdateReviewDto,
-    userGoogleId: string,
-  ): Promise<Review> {
-    const objectId = this.validateObjectId(id); // ✅ ID 변환 및 검증
-    // 기존 리뷰 데이터 조회
-    const existingReview = await this.reviewModel.findById(objectId).exec();
-    if (!existingReview) {
-      throw new NotFoundException(`Review with ID ${id} not found`);
+  // ✅ 특정 사용자의 후기 조회
+  async getReviewsByUser(googleId: string) {
+    const { Items } = await this.dynamoDBClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: 'googleId-index',
+        KeyConditionExpression: 'googleId = :googleId',
+        ExpressionAttributeValues: marshall({ ':googleId': googleId }),
+      }),
+    );
+
+    if (!Items || Items.length === 0) {
+      throw new NotFoundException(`No reviews found for user ${googleId}`);
     }
-    // ✅ 작성자 검증
+
+    return Items.map((item) => unmarshall(item));
+  }
+
+  // ✅ 상품 수정 (DynamoDB 문법 오류 수정)
+  async updateReview(id: string, updateReviewDto: any, userGoogleId: string) {
+    const existingReview = await this.getReviewById(id);
     if (existingReview.googleId !== userGoogleId) {
-      throw new ForbiddenException(
+      throw new BadRequestException(
         'You are not authorized to update this review',
       );
     }
 
-    // ✅ imageUrls가 변경되었는지 확인
-    if (updateReviewDto.imageUrls) {
-      // ✅ 새 imageUrls를 기반으로 새로운 thumbnailUrls 생성
-      updateReviewDto.thumbnailUrls = updateReviewDto.imageUrls.map((url) =>
-        this.generateThumbnailUrl(url),
-      );
+    // ✅ UpdateExpression 및 ExpressionAttributeValues 수정
+    const updateExpressionParts: string[] = [];
+    const expressionAttributeValues: { [key: string]: any } = {};
+    for (const [key, value] of Object.entries(updateReviewDto)) {
+      updateExpressionParts.push(`${key} = :${key}`);
+      expressionAttributeValues[`:${key}`] = value;
     }
 
-    // ✅ 데이터 업데이트
-    const updatedReview = await this.reviewModel
-      .findByIdAndUpdate(id, updateReviewDto, { new: true })
-      .exec();
+    const updateExpression = `set ${updateExpressionParts.join(', ')}`;
 
-    if (!updatedReview) {
-      throw new NotFoundException(`Review with ID ${id} not found`);
-    }
+    await this.dynamoDBClient.send(
+      new UpdateItemCommand({
+        TableName: this.tableName,
+        Key: marshall({ id }),
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: marshall(expressionAttributeValues),
+      }),
+    );
 
-    return updatedReview;
+    return this.getReviewById(id);
   }
 
   // ✅ 상품 삭제
-  async deleteReview(
-    id: string,
-    userGoogleId: string,
-  ): Promise<{ message: string }> {
-    const objectId = this.validateObjectId(id); // ✅ ID 변환 및 검증
-    const review = await this.reviewModel.findById(objectId).exec();
-    if (!review) {
-      throw new NotFoundException(`Review with ID ${id} not found`);
-    }
-
-    // ✅ 작성자 검증
-    if (review.googleId !== userGoogleId) {
-      throw new ForbiddenException(
+  async deleteReview(id: string, userGoogleId: string) {
+    const existingReview = await this.getReviewById(id);
+    if (existingReview.googleId !== userGoogleId) {
+      throw new BadRequestException(
         'You are not authorized to delete this review',
       );
     }
 
-    await this.reviewModel.findByIdAndDelete(id).exec();
+    await this.dynamoDBClient.send(
+      new DeleteItemCommand({
+        TableName: this.tableName,
+        Key: marshall({ id }),
+      }),
+    );
+
     return { message: 'Review deleted successfully' };
   }
 
-  // ✅ 특정 사용자가 작성한 후기 조회
-  async getReviewsByUser(googleId: string): Promise<Review[]> {
-    const reviews = await this.reviewModel.find({ googleId }).exec();
+  // ✅ 특정 사용자의 모든 후기 삭제
+  async deleteReviewsByUser(googleId: string) {
+    const reviews = await this.getReviewsByUser(googleId);
     if (!reviews.length) {
       throw new NotFoundException(`No reviews found for user ${googleId}`);
     }
-    return reviews;
-  }
 
-  // ✅ 특정 사용자가 작성한 모든 후기 삭제
-  async deleteReviewsByUser(googleId: string): Promise<{ message: string }> {
-    const result = await this.reviewModel.deleteMany({ googleId }).exec();
-
-    if (result.deletedCount === 0) {
-      throw new NotFoundException(`No reviews found for user ${googleId}`);
+    for (const review of reviews) {
+      await this.dynamoDBClient.send(
+        new DeleteItemCommand({
+          TableName: this.tableName,
+          Key: marshall({ id: review.id }),
+        }),
+      );
     }
 
-    return { message: `Successfully deleted ${result.deletedCount} reviews.` };
+    return { message: `Successfully deleted ${reviews.length} reviews.` };
   }
 }
