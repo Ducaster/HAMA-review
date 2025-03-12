@@ -23,26 +23,35 @@ export class ReviewService {
 
   private readonly tableName = 'Reviews';
 
-  // ✅ 상품 등록
+  // ✅ 객체에서 undefined 값 제거하는 함수 추가
+  private sanitizeData(obj: Record<string, any>) {
+    return Object.fromEntries(
+      Object.entries(obj).filter(([_, v]) => v !== undefined),
+    );
+  }
+
+  // ✅ 후기 생성
   async createReview(createReviewDto: any, googleId: string) {
     const id = uuidv4();
-    const item = {
+    const item = this.sanitizeData({
       id,
       googleId,
       ...createReviewDto,
-    };
+    });
+
+    const marshalledData = marshall(item, { removeUndefinedValues: true });
 
     await this.dynamoDBClient.send(
       new PutItemCommand({
         TableName: this.tableName,
-        Item: marshall(item),
+        Item: marshalledData,
       }),
     );
 
     return item;
   }
 
-  // ✅ 전체 상품 조회
+  // ✅ 모든 후기 조회
   async getAllReviews() {
     const { Items } = await this.dynamoDBClient.send(
       new ScanCommand({ TableName: this.tableName }),
@@ -50,14 +59,15 @@ export class ReviewService {
     return Items ? Items.map((item) => unmarshall(item)) : [];
   }
 
-  // ✅ 특정 상품 조회
+  // ✅ 특정 후기 조회
   async getReviewById(id: string) {
     const { Item } = await this.dynamoDBClient.send(
       new GetItemCommand({
         TableName: this.tableName,
-        Key: marshall({ id }),
+        Key: marshall({ id }, { removeUndefinedValues: true }),
       }),
     );
+
     if (!Item) {
       throw new NotFoundException(`Review with ID ${id} not found`);
     }
@@ -71,7 +81,10 @@ export class ReviewService {
         TableName: this.tableName,
         IndexName: 'googleId-index',
         KeyConditionExpression: 'googleId = :googleId',
-        ExpressionAttributeValues: marshall({ ':googleId': googleId }),
+        ExpressionAttributeValues: marshall(
+          { ':googleId': googleId },
+          { removeUndefinedValues: true },
+        ),
       }),
     );
 
@@ -82,7 +95,7 @@ export class ReviewService {
     return Items.map((item) => unmarshall(item));
   }
 
-  // ✅ 상품 수정 (DynamoDB 문법 오류 수정)
+  // ✅ 후기 수정
   async updateReview(id: string, updateReviewDto: any, userGoogleId: string) {
     const existingReview = await this.getReviewById(id);
     if (existingReview.googleId !== userGoogleId) {
@@ -92,28 +105,33 @@ export class ReviewService {
     }
 
     // ✅ UpdateExpression 및 ExpressionAttributeValues 수정
+    const sanitizedUpdateData = this.sanitizeData(updateReviewDto);
+
     const updateExpressionParts: string[] = [];
     const expressionAttributeValues: { [key: string]: any } = {};
-    for (const [key, value] of Object.entries(updateReviewDto)) {
+
+    for (const [key, value] of Object.entries(sanitizedUpdateData)) {
       updateExpressionParts.push(`${key} = :${key}`);
       expressionAttributeValues[`:${key}`] = value;
     }
 
-    const updateExpression = `set ${updateExpressionParts.join(', ')}`;
+    const updateExpression = `SET ${updateExpressionParts.join(', ')}`;
 
     await this.dynamoDBClient.send(
       new UpdateItemCommand({
         TableName: this.tableName,
-        Key: marshall({ id }),
+        Key: marshall({ id }, { removeUndefinedValues: true }),
         UpdateExpression: updateExpression,
-        ExpressionAttributeValues: marshall(expressionAttributeValues),
+        ExpressionAttributeValues: marshall(expressionAttributeValues, {
+          removeUndefinedValues: true,
+        }),
       }),
     );
 
     return this.getReviewById(id);
   }
 
-  // ✅ 상품 삭제
+  // ✅ 후기 삭제
   async deleteReview(id: string, userGoogleId: string) {
     const existingReview = await this.getReviewById(id);
     if (existingReview.googleId !== userGoogleId) {
@@ -125,7 +143,7 @@ export class ReviewService {
     await this.dynamoDBClient.send(
       new DeleteItemCommand({
         TableName: this.tableName,
-        Key: marshall({ id }),
+        Key: marshall({ id }, { removeUndefinedValues: true }),
       }),
     );
 
@@ -143,7 +161,7 @@ export class ReviewService {
       await this.dynamoDBClient.send(
         new DeleteItemCommand({
           TableName: this.tableName,
-          Key: marshall({ id: review.id }),
+          Key: marshall({ id: review.id }, { removeUndefinedValues: true }),
         }),
       );
     }
